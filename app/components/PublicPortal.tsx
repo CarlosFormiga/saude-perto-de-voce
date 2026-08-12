@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { PortalLink as Link } from "../portal-navigation";
 
 type Product = { id: string; code: string; name: string; active_ingredient: string; presentation: string; unit: string; available: number; minimum_stock: number; delivery_allowed: number };
 

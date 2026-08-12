@@ -8,9 +8,10 @@
   "scripts": {
     "dev": "node node_modules/vinext/dist/cli.js dev",
     "build": "node node_modules/vinext/dist/cli.js build",
+    "build:static": "vite build --config vite.static.config.ts",
     "start": "node node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern static-dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

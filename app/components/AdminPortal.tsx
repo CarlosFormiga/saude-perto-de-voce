@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePortalRouter } from "../portal-navigation";
 
 type Item=Record<string,string|number|null>;
 type AdminData={me:Item;products:Item[];lots:Item[];requests:Item[];slots:Item[];specialties:Item[];specialtySchedules:Item[];locations:Item[];citizens:Item[];chats:Item[];adminMessages:Item[];auditEvents:Item[];adminUsers:Item[];kpis:{pending:number;lowStock:number;todayAppointments:number;citizens:number}};
@@ -10,7 +10,7 @@ const labels:Record<string,string>={received:"Recebida",approved:"Aprovada",read
 function date(value:unknown){return value?new Date(String(value)).toLocaleString("pt-BR",{dateStyle:"short",timeStyle:"short"}):"—";}
 
 export function AdminPortal(){
-  const [data,setData]=useState<AdminData|null>(null);const[tab,setTab]=useState("visao");const[toast,setToast]=useState<{text:string,error?:boolean}|null>(null);const[busy,setBusy]=useState(false);const[requestFilter,setRequestFilter]=useState("all");const[selectedChat,setSelectedChat]=useState("");const[reply,setReply]=useState("");const router=useRouter();
+  const [data,setData]=useState<AdminData|null>(null);const[tab,setTab]=useState("visao");const[toast,setToast]=useState<{text:string,error?:boolean}|null>(null);const[busy,setBusy]=useState(false);const[requestFilter,setRequestFilter]=useState("all");const[selectedChat,setSelectedChat]=useState("");const[reply,setReply]=useState("");const router=usePortalRouter();
   const load=useCallback(async()=>{const response=await fetch("/api/portal?action=admin");if(response.status===401||response.status===403){router.replace("/entrar");return;}setData(await response.json());},[router]);
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);return()=>window.clearTimeout(timer);},[load]);
   async function act(action:string,payload:Record<string,unknown>={}){setBusy(true);const response=await fetch("/api/portal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});const result=await response.json() as {message?:string};setBusy(false);setToast({text:result.message??(response.ok?"Atualizado.":"Não foi possível continuar."),error:!response.ok});setTimeout(()=>setToast(null),4500);if(response.ok)await load();return response.ok;}

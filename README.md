@@ -2,6 +2,11 @@
 
 PWA municipal para consulta pública de estoque, solicitação e agendamento de medicamentos, gestão da farmácia e mapeamento de demanda por especialistas.
 
+## Demonstração pública
+
+- Aplicação: `https://cooperinventory.onrender.com/saude`
+- Repositório do produto: `https://github.com/CarlosFormiga/saude-perto-de-voce`
+
 ## Executar localmente
 
 Requer Node.js 22.13 ou superior.

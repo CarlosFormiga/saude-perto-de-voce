@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePortalRouter } from "../portal-navigation";
 
 type Item = Record<string, string | number | null>;
 type CitizenData = { profile: Item; products: Item[]; requests: Item[]; needs: Item[]; specialties: Item[]; schedules: Item[]; interests: Item[]; notifications: Item[]; messages: Item[]; slots: Item[] };
@@ -10,7 +10,7 @@ const nav = [{id:"inicio",icon:"⌂",label:"Início"},{id:"medicamentos",icon:"R
 function fmtDate(value: unknown, time=true) { if (!value) return "—"; return new Date(String(value)).toLocaleString("pt-BR", time ? {dateStyle:"short",timeStyle:"short"} : {dateStyle:"long"}); }
 
 export function CitizenPortal() {
-  const [data,setData]=useState<CitizenData|null>(null); const [tab,setTab]=useState("inicio"); const [toast,setToast]=useState<{text:string,error?:boolean}|null>(null); const [busy,setBusy]=useState(false); const [selected,setSelected]=useState<Item|null>(null); const [method,setMethod]=useState("pickup"); const [slotId,setSlotId]=useState(""); const [quantity,setQuantity]=useState(1); const [message,setMessage]=useState(""); const router=useRouter();
+  const [data,setData]=useState<CitizenData|null>(null); const [tab,setTab]=useState("inicio"); const [toast,setToast]=useState<{text:string,error?:boolean}|null>(null); const [busy,setBusy]=useState(false); const [selected,setSelected]=useState<Item|null>(null); const [method,setMethod]=useState("pickup"); const [slotId,setSlotId]=useState(""); const [quantity,setQuantity]=useState(1); const [message,setMessage]=useState(""); const router=usePortalRouter();
   const load=useCallback(async()=>{ const response=await fetch("/api/portal?action=citizen"); if(response.status===401){router.replace("/entrar");return;} setData(await response.json()); },[router]);
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);return()=>window.clearTimeout(timer);},[load]);
   async function act(action:string,payload:Record<string,unknown>={}) { setBusy(true); const response=await fetch("/api/portal",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})}); const result=await response.json() as {message?:string}; setBusy(false); setToast({text:result.message??(response.ok?"Tudo certo.":"Não foi possível continuar."),error:!response.ok}); setTimeout(()=>setToast(null),4500); if(response.ok) await load(); return response.ok; }

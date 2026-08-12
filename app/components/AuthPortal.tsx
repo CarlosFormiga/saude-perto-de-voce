@@ -1,15 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { PortalLink as Link, usePortalRouter } from "../portal-navigation";
 
 export function AuthPortal({ initialMode = "citizen" }: { initialMode?: "citizen" | "admin" | "activate" }) {
   const [mode, setMode] = useState(initialMode);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState(false);
-  const router = useRouter();
+  const router = usePortalRouter();
   useEffect(() => { fetch("/api/portal?action=session").then((r) => r.json() as Promise<{role?:string}>).then((data) => { if (data.role === "citizen") router.replace("/cidadao"); if (data.role === "admin") router.replace("/admin"); }); }, [router]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -19,7 +18,7 @@ export function AuthPortal({ initialMode = "citizen" }: { initialMode?: "citizen
     const response = await fetch("/api/portal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, mode, ...values }) });
     const data = await response.json() as {message?:string;role?:string}; setLoading(false);
     if (!response.ok) { setError(true); setMessage(data.message ?? "Não foi possível continuar."); return; }
-    window.location.assign(data.role === "admin" ? "/admin" : "/cidadao");
+    router.replace(data.role === "admin" ? "/admin" : "/cidadao");
   }
 
   return <main className="auth-layout">
