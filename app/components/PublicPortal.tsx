@@ -32,14 +32,15 @@ export function PublicPortal() {
           <Link className="quick-card" href="/entrar"><span className="quick-icon">♡</span><h3>Especialistas</h3><p>Veja as datas e informe de qual atendimento você precisa.</p></Link>
         </div>
       </section>
-      <section className="section legal"><span style={{fontSize:24}}>§</span><div><strong>Transparência que cuida de você</strong>Este portal atende à Lei nº 14.654/2023, que determina a divulgação eletrônica dos estoques das farmácias públicas do SUS. Aqui, a atualização é operacional e mais frequente que o mínimo quinzenal exigido.</div></section>
+      <section className="section legal"><span style={{fontSize:24}}>§</span><div><strong>Transparência que cuida de você</strong>Este portal apoia o atendimento à Lei nº 14.654/2023, que determina a divulgação eletrônica e acessível dos estoques das farmácias públicas do SUS, com atualização no mínimo quinzenal. A data abaixo corresponde à última movimentação registrada no inventário.</div></section>
       <section className="section" id="estoque">
-        <div className="section-heading"><div><span className="eyebrow" style={{color:"var(--green)"}}>Consulta pública</span><h2>Estoque de medicamentos</h2><p className="muted">Não é necessário entrar para consultar.</p></div></div>
+        <div className="section-heading"><div><span className="eyebrow" style={{color:"var(--green)"}}>Consulta pública</span><h2>Estoque de medicamentos</h2><p className="muted">Estoque consolidado da Farmácia Municipal. Não é necessário entrar para consultar.</p></div></div>
         <label className="searchbox"><span aria-hidden="true">⌕</span><input aria-label="Buscar medicamento" placeholder="Digite o nome do medicamento..." value={query} onChange={(event) => setQuery(event.target.value)} /></label>
         <div className="grid grid-3" style={{marginTop:16}}>{filtered.map((product) => { const status=stock(product); return <article className="card medicine-card" key={product.id}><div className="medicine-title"><div><h3>{product.name}</h3><div className="medicine-meta">{product.presentation} · cód. {product.code}</div></div><span className={status.className}>{status.label}</span></div><div className="medicine-meta">Princípio ativo: {product.active_ingredient}</div>{Number(product.available)>0 && <strong>{Number(product.available)} {product.unit}(s) disponíveis</strong>}<div className="medicine-meta">{product.delivery_allowed ? "Pode ser solicitado para entrega após validação." : "Retirada presencial obrigatória."}</div></article>; })}</div>
         {!filtered.length && <div className="empty">Nenhum medicamento encontrado. Tente outro nome.</div>}
-        {updatedAt && <p className="updated">Estoque consultado em {new Date(updatedAt).toLocaleString("pt-BR")}.</p>}
+        {updatedAt && <p className="updated">Última atualização do inventário: {new Date(updatedAt).toLocaleString("pt-BR")}. O saldo pode mudar durante a análise; a dispensação depende das regras do SUS, da receita e da conferência da farmácia.</p>}
       </section>
+      <section className="section panel"><div className="panel-body"><h2>Privacidade, acessibilidade e atendimento</h2><p className="muted">A consulta de estoque não exibe dados pessoais. No portal autenticado, o município trata dados cadastrais e de saúde para executar o serviço público. O cidadão pode solicitar acesso, correção, informações ou revisão pela área Privacidade. Antes da implantação, a prefeitura deve publicar o contato do encarregado, a política de retenção e o canal alternativo de atendimento acessível.</p></div></section>
     </main>
   </>;
 }

@@ -1,0 +1,5 @@
+# Gere um par exclusivo com: npm run push:keys
+# Nunca envie a chave privada ao Git.
+VAPID_PUBLIC_KEY=CHAVE_PUBLICA_GERADA
+VAPID_PRIVATE_KEY=CHAVE_PRIVADA_GERADA
+VAPID_SUBJECT=mailto:contato-oficial-do-municipio@exemplo.gov.br

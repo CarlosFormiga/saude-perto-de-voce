@@ -92,7 +92,20 @@ export const requests = sqliteTable("requests", {
   status: text("status").notNull(),
   slotId: text("slot_id"),
   prescriptionName: text("prescription_name"),
+  prescriptionStorageKey: text("prescription_storage_key"),
+  reservedLotId: text("reserved_lot_id"),
+  decisionReason: text("decision_reason"),
   ...timestamps,
+});
+
+export const privacyRequests = sqliteTable("privacy_requests", {
+  id: text("id").primaryKey(),
+  citizenId: text("citizen_id").notNull(),
+  requestType: text("request_type").notNull(),
+  details: text("details"),
+  status: text("status").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
 });
 
 export const scheduleSlots = sqliteTable("schedule_slots", {
@@ -153,6 +166,19 @@ export const notifications = sqliteTable("notifications", {
   message: text("message").notNull(),
   readAt: text("read_at"),
   createdAt: text("created_at").notNull(),
+});
+
+export const pushSubscriptions = sqliteTable("push_subscriptions", {
+  id: text("id").primaryKey(),
+  citizenId: text("citizen_id").notNull(),
+  endpoint: text("endpoint").notNull().unique(),
+  p256dh: text("p256dh").notNull(),
+  auth: text("auth").notNull(),
+  userAgent: text("user_agent"),
+  active: integer("active", { mode: "boolean" }).notNull(),
+  failureCount: integer("failure_count").notNull(),
+  lastSuccessAt: text("last_success_at"),
+  ...timestamps,
 });
 
 export const messages = sqliteTable("messages", {

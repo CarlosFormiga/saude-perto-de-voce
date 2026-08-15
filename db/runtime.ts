@@ -17,7 +17,7 @@ const schemaStatements = [
   `CREATE TABLE IF NOT EXISTS stock_movements (id TEXT PRIMARY KEY, lot_id TEXT NOT NULL, movement_type TEXT NOT NULL, physical_delta REAL NOT NULL DEFAULT 0, reserved_delta REAL NOT NULL DEFAULT 0, actor TEXT NOT NULL, reference_id TEXT, created_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS schedule_slots (id TEXT PRIMARY KEY, method TEXT NOT NULL, starts_at TEXT NOT NULL, ends_at TEXT NOT NULL, capacity INTEGER NOT NULL, reserved_count INTEGER NOT NULL DEFAULT 0, active INTEGER NOT NULL DEFAULT 1)`,
   `CREATE INDEX IF NOT EXISTS idx_slots_available ON schedule_slots(method, starts_at, active)`,
-  `CREATE TABLE IF NOT EXISTS requests (id TEXT PRIMARY KEY, protocol TEXT NOT NULL UNIQUE, citizen_id TEXT NOT NULL, product_id TEXT NOT NULL, quantity REAL NOT NULL, method TEXT NOT NULL, status TEXT NOT NULL, slot_id TEXT, prescription_name TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS requests (id TEXT PRIMARY KEY, protocol TEXT NOT NULL UNIQUE, citizen_id TEXT NOT NULL, product_id TEXT NOT NULL, quantity REAL NOT NULL, method TEXT NOT NULL, status TEXT NOT NULL, slot_id TEXT, prescription_name TEXT, prescription_storage_key TEXT, reserved_lot_id TEXT, decision_reason TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS idx_requests_citizen ON requests(citizen_id, created_at DESC)`,
   `CREATE INDEX IF NOT EXISTS idx_requests_queue ON requests(status, created_at)`,
   `CREATE TABLE IF NOT EXISTS stock_needs (id TEXT PRIMARY KEY, citizen_id TEXT NOT NULL, product_id TEXT NOT NULL, status TEXT NOT NULL, created_at TEXT NOT NULL)`,
@@ -29,9 +29,14 @@ const schemaStatements = [
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_interest_active ON specialty_interests(citizen_id, specialty_id) WHERE status IN ('active','notified','confirmed')`,
   `CREATE TABLE IF NOT EXISTS notifications (id TEXT PRIMARY KEY, citizen_id TEXT NOT NULL, title TEXT NOT NULL, message TEXT NOT NULL, read_at TEXT, created_at TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS idx_notifications_citizen ON notifications(citizen_id, created_at DESC)`,
+  `CREATE TABLE IF NOT EXISTS push_subscriptions (id TEXT PRIMARY KEY, citizen_id TEXT NOT NULL, endpoint TEXT NOT NULL UNIQUE, p256dh TEXT NOT NULL, auth TEXT NOT NULL, user_agent TEXT, active INTEGER NOT NULL DEFAULT 1, failure_count INTEGER NOT NULL DEFAULT 0, last_success_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS idx_push_subscriptions_citizen ON push_subscriptions(citizen_id, active)`,
   `CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, citizen_id TEXT NOT NULL, sender TEXT NOT NULL, body TEXT NOT NULL, read_at TEXT, created_at TEXT NOT NULL)`,
   `CREATE INDEX IF NOT EXISTS idx_messages_citizen ON messages(citizen_id, created_at)`,
   `CREATE TABLE IF NOT EXISTS audit_events (id TEXT PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, entity TEXT NOT NULL, entity_id TEXT, details TEXT, created_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS privacy_requests (id TEXT PRIMARY KEY, citizen_id TEXT NOT NULL, request_type TEXT NOT NULL, details TEXT, status TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  `CREATE INDEX IF NOT EXISTS idx_privacy_requests_queue ON privacy_requests(status, created_at)`,
+  `CREATE TABLE IF NOT EXISTS login_attempts (identity_hash TEXT PRIMARY KEY, attempts INTEGER NOT NULL DEFAULT 0, blocked_until TEXT, updated_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
 ];
 
@@ -153,6 +158,20 @@ async function ensureHealthWorkflow() {
   const interestColumns = await db.prepare("PRAGMA table_info(specialty_interests)").all<{ name: string }>();
   if (!(interestColumns.results ?? []).some((column) => column.name === "schedule_id")) await db.prepare("ALTER TABLE specialty_interests ADD COLUMN schedule_id TEXT").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_interests_schedule ON specialty_interests(schedule_id, status)").run();
+  const requestColumns = await db.prepare("PRAGMA table_info(requests)").all<{ name: string }>();
+  const requestColumnNames = new Set((requestColumns.results ?? []).map((column) => column.name));
+  if (!requestColumnNames.has("prescription_storage_key")) await db.prepare("ALTER TABLE requests ADD COLUMN prescription_storage_key TEXT").run();
+  if (!requestColumnNames.has("reserved_lot_id")) await db.prepare("ALTER TABLE requests ADD COLUMN reserved_lot_id TEXT").run();
+  if (!requestColumnNames.has("decision_reason")) await db.prepare("ALTER TABLE requests ADD COLUMN decision_reason TEXT").run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_request_slot_guard BEFORE INSERT ON requests
+    WHEN NEW.slot_id IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM schedule_slots s WHERE s.id=NEW.slot_id AND s.active=1 AND s.method=NEW.method
+        AND s.starts_at>datetime('now') AND s.reserved_count<s.capacity
+    ) BEGIN SELECT RAISE(ABORT, 'slot_unavailable'); END`).run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_request_slot_reserve AFTER INSERT ON requests
+    WHEN NEW.slot_id IS NOT NULL BEGIN
+      UPDATE schedule_slots SET reserved_count=reserved_count+1 WHERE id=NEW.slot_id;
+    END`).run();
   const timestamp = new Date().toISOString();
   await db.batch([
     db.prepare("INSERT OR IGNORE INTO health_locations VALUES ('location-central', 'Unidade Central de Saúde', 'Rua Principal, 100', 'Centro', 'Ao lado da Prefeitura', 1, ?, ?)").bind(timestamp, timestamp),
@@ -233,15 +252,15 @@ async function ensureDemoDataset() {
     db.prepare("UPDATE activation_codes SET status='used' WHERE citizen_id='citizen-maria'"),
     db.prepare("INSERT OR IGNORE INTO credentials VALUES ('citizen-joao', ?, ?)").bind(joaoPassword, now),
     db.prepare("INSERT OR IGNORE INTO activation_codes VALUES ('activation-ana', 'citizen-ana', ?, 'active', '2027-12-31T23:59:59.000Z', ?)").bind(anaActivation, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-01', 'SAU-2026-0101', 'citizen-joao', 'prod-losartana', 30, 'pickup', 'received', 'pickup-2-9-0', 'receita-losartana.pdf', ?, ?)").bind(now, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-02', 'SAU-2026-0102', 'citizen-antonio', 'prod-metformina', 60, 'delivery', 'approved', 'delivery-2-15', 'receita-metformina.jpg', ?, ?)").bind(now, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-03', 'SAU-2026-0103', 'citizen-jose', 'prod-omeprazol', 28, 'pickup', 'ready', 'pickup-1-10-15', 'receita-omeprazol.pdf', ?, ?)").bind(now, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-04', 'SAU-2026-0104', 'citizen-marlene', 'prod-insulina', 2, 'pickup', 'received', 'pickup-3-8-30', 'receita-insulina.jpg', ?, ?)").bind(now, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-05', 'SAU-2026-0105', 'citizen-sebastiao', 'prod-amlodipino', 30, 'delivery', 'ready', 'delivery-1-16', 'receita-amlodipino.pdf', ?, ?)").bind(now, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-06', 'SAU-2026-0106', 'citizen-paulo', 'prod-amoxicilina', 21, 'pickup', 'approved', 'pickup-2-14-0', 'receita-amoxicilina.pdf', ?, ?)").bind(now, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-07', 'SAU-2026-0107', 'citizen-neusa', 'prod-levotiroxina', 30, 'delivery', 'received', 'delivery-3-14', 'receita-levotiroxina.jpg', ?, ?)").bind(now, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-08', 'SAU-2026-0108', 'citizen-elza', 'prod-aas', 30, 'pickup', 'completed', 'pickup-1-8-0', 'receita-aas.pdf', ?, ?)").bind(now, now),
-    db.prepare("INSERT OR IGNORE INTO requests VALUES ('request-demo-09', 'SAU-2026-0109', 'citizen-geraldo', 'prod-salbutamol', 1, 'delivery', 'received', 'delivery-4-15', 'receita-salbutamol.jpg', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-01', 'SAU-2026-0101', 'citizen-joao', 'prod-losartana', 30, 'pickup', 'received', 'pickup-2-9-0', 'receita-losartana.pdf', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-02', 'SAU-2026-0102', 'citizen-antonio', 'prod-metformina', 60, 'delivery', 'approved', 'delivery-2-15', 'receita-metformina.jpg', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-03', 'SAU-2026-0103', 'citizen-jose', 'prod-omeprazol', 28, 'pickup', 'ready_for_pickup', 'pickup-1-10-15', 'receita-omeprazol.pdf', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-04', 'SAU-2026-0104', 'citizen-marlene', 'prod-insulina', 2, 'pickup', 'received', 'pickup-3-8-30', 'receita-insulina.jpg', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-05', 'SAU-2026-0105', 'citizen-sebastiao', 'prod-amlodipino', 30, 'delivery', 'delivery_scheduled', 'delivery-1-16', 'receita-amlodipino.pdf', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-06', 'SAU-2026-0106', 'citizen-paulo', 'prod-amoxicilina', 21, 'pickup', 'approved', 'pickup-2-14-0', 'receita-amoxicilina.pdf', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-07', 'SAU-2026-0107', 'citizen-neusa', 'prod-levotiroxina', 30, 'delivery', 'received', 'delivery-3-14', 'receita-levotiroxina.jpg', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-08', 'SAU-2026-0108', 'citizen-elza', 'prod-aas', 30, 'pickup', 'completed', 'pickup-1-8-0', 'receita-aas.pdf', ?, ?)").bind(now, now),
+    db.prepare("INSERT OR IGNORE INTO requests (id,protocol,citizen_id,product_id,quantity,method,status,slot_id,prescription_name,created_at,updated_at) VALUES ('request-demo-09', 'SAU-2026-0109', 'citizen-geraldo', 'prod-salbutamol', 1, 'delivery', 'received', 'delivery-4-15', 'receita-salbutamol.jpg', ?, ?)").bind(now, now),
     db.prepare("INSERT OR IGNORE INTO stock_needs VALUES ('need-demo-01', 'citizen-rosangela', 'prod-azitromicina', 'active', ?)").bind(now),
   ]);
 
@@ -299,15 +318,22 @@ export async function createSession(role: "citizen" | "admin", principalId: stri
 }
 
 export function json(data: unknown, init?: ResponseInit) {
-  return Response.json(data, { ...init, headers: { "Cache-Control": "no-store", ...(init?.headers ?? {}) } });
+  return Response.json(data, { ...init, headers: {
+    "Cache-Control": "no-store",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    ...(init?.headers ?? {}),
+  } });
 }
 
 export function sessionCookie(token: string) {
-  return `ps_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800`;
+  return `ps_session=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=604800`;
 }
 
 export function clearSessionCookie() {
-  return "ps_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0";
+  return "ps_session=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0";
 }
 
 export async function audit(actor: string, action: string, entity: string, entityId?: string, details?: string) {

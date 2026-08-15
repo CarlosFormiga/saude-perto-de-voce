@@ -25,3 +25,9 @@ Todos os dados abaixo são fictícios e exclusivos da demonstração.
 - 15 cidadãos fictícios em diferentes situações cadastrais.
 - Solicitações para retirada e entrega em múltiplas etapas.
 - Demandas e agendas para Cardiologia, Ortopedia, Oftalmologia e Dermatologia.
+
+## Limites da demonstração
+
+- Não use dados reais no ambiente público.
+- Os avisos ficam registrados no portal e o cidadão pode ativar Web Push em cada aparelho. O ambiente precisa ter as chaves VAPID configuradas; WhatsApp e SMS não fazem parte do MVP.
+- O ambiente demonstra controles técnicos, mas não substitui homologação municipal de LGPD, segurança, assistência farmacêutica e acessibilidade.
